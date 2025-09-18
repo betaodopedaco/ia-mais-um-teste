@@ -1,61 +1,121 @@
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
+import os
+import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
-import os
 
 app = Flask(__name__)
 CORS(app)
 
-# Carregar modelo e tokenizer
-print("Carregando modelo DialoGPT-small...")
-tokenizer = AutoTokenizer.from_pretrained("microsoft/DialoGPT-small")
-model = AutoModelForCausalLM.from_pretrained("microsoft/DialoGPT-small")
-print("Modelo carregado com sucesso!")
+# Config
+HF_MODEL = os.environ.get('HF_MODEL', 'microsoft/DialoGPT-small')
+HF_TOKEN = os.environ.get('HF_TOKEN')  # configure no Render
+HF_API = f'https://api-inference.huggingface.co/models/{HF_MODEL}'
 
-# Dicionário para armazenar histórico de conversa por sessão
-chat_histories = {}
+# DEBUG / TEST MODE: se TEST_MODE=true, o servidor responde com mensagens fictícias sem HF
+TEST_MODE = os.environ.get('TEST_MODE', 'false').lower() in ('1', 'true', 'yes')
+
+# Histórico simples por sessão (em memória)
+session_histories = {}
 
 @app.route('/')
 def home():
-    return render_template('index.html')
+    # se tiver um templates/index.html, serve, senão retorna um texto simples
+    try:
+        return render_template('index.html')
+    except Exception:
+        return "Servidor rodando - acesse /health para checar", 200
+
+@app.route('/health')
+def health():
+    return 'OK', 200
+
+@app.route('/info')
+def info():
+    return {
+        'model': HF_MODEL,
+        'token_set': bool(HF_TOKEN),
+        'test_mode': TEST_MODE
+    }, 200
 
 @app.route('/chat', methods=['POST'])
 def chat():
+    data = request.get_json(force=True)
+    user_message = (data.get('message') or '').strip()
+    session_id = data.get('session_id', 'default')
+
+    if not user_message:
+        return jsonify({'error': 'Mensagem vazia'}), 400
+
+    # Modo de teste: responde sem usar HF (útil para debug local)
+    if TEST_MODE:
+        bot_text = f"[TEST MODE] Recebi: {user_message}"
+        # atualiza histórico curto
+        history = session_histories.get(session_id, '')
+        session_histories[session_id] = (history + f"\nUser: {user_message}\nBot: {bot_text}")[-2000:]
+        return jsonify({'response': bot_text})
+
+    # Se não tem token configurado -> retorna erro amigável
+    if not HF_TOKEN:
+        return jsonify({'error': 'HF_TOKEN não configurado. Defina a variável de ambiente HF_TOKEN no Render.'}), 500
+
+    # monta prompt simples com histórico
+    history = session_histories.get(session_id, '')
+    prompt = (history + '\nUser: ' + user_message + '\nBot:').strip()
+
+    headers = {
+        'Authorization': f'Bearer {HF_TOKEN}',
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        'inputs': prompt,
+        'parameters': {
+            'max_new_tokens': 150,
+            'temperature': 0.7,
+            'top_k': 50,
+            'top_p': 0.9,
+            'repetition_penalty': 1.1
+        }
+    }
+
     try:
-        data = request.json
-        user_message = data.get('message', '')
-        session_id = data.get('session_id', 'default')
-        
-        if not user_message:
-            return jsonify({'error': 'Mensagem vazia'}), 400
-        
-        if session_id not in chat_histories:
-            chat_histories[session_id] = None
-        
-        new_user_input_ids = tokenizer.encode(user_message + tokenizer.eos_token, return_tensors='pt')
-        bot_input_ids = torch.cat([chat_histories[session_id], new_user_input_ids], dim=-1) if chat_histories[session_id] is not None else new_user_input_ids
-        
-        chat_history_ids = model.generate(
-            bot_input_ids, 
-            max_length=1000,
-            pad_token_id=tokenizer.eos_token_id,
-            temperature=0.7,
-            top_k=50,
-            top_p=0.9,
-            do_sample=True,
-            no_repeat_ngram_size=3
-        )
-        
-        bot_response = tokenizer.decode(chat_history_ids[:, bot_input_ids.shape[-1]:][0], skip_special_tokens=True)
-        chat_histories[session_id] = chat_history_ids
-        
-        return jsonify({'response': bot_response})
-    
+        resp = requests.post(HF_API, headers=headers, json=payload, timeout=30)
+    except requests.exceptions.RequestException as e:
+        return jsonify({'error': 'Erro de conexão com HuggingFace: ' + str(e)}), 500
+
+    # trata status codes da HF
+    if resp.status_code == 401:
+        return jsonify({'error': 'Unauthorized: token inválido/expirado (401)'}), 401
+    if resp.status_code == 404:
+        return jsonify({'error': f'Modelo não encontrado (404). Verifique HF_MODEL: {HF_MODEL}'}), 404
+    if resp.status_code >= 400:
+        # tenta extrair JSON de erro
+        try:
+            err = resp.json()
+        except Exception:
+            err = resp.text
+        return jsonify({'error': f'HuggingFace API error: {resp.status_code} - {err}'}), 500
+
+    # parse do resultado com flexibilidade
+    try:
+        result = resp.json()
+        bot_text = ''
+        if isinstance(result, dict) and 'error' in result:
+            return jsonify({'error': result.get('error')}), 500
+        elif isinstance(result, list) and len(result) > 0 and isinstance(result[0], dict):
+            bot_text = result[0].get('generated_text') or result[0].get('text') or ''
+        elif isinstance(result, dict) and 'generated_text' in result:
+            bot_text = result.get('generated_text')
+        else:
+            bot_text = str(result)
+        bot_text = bot_text.strip()
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Erro ao processar resposta da HF: ' + str(e)}), 500
+
+    # atualiza histórico e retorna
+    new_history = (history + f'\nUser: {user_message}\nBot: {bot_text}') if history else f'User: {user_message}\nBot: {bot_text}'
+    session_histories[session_id] = new_history[-2000:]
+    return jsonify({'response': bot_text})
 
 if __name__ == '__main__':
-    print("Servidor de chat iniciando...")
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
