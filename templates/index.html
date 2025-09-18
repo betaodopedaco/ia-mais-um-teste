@@ -1,153 +1,62 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chat com DialoGPT</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .chat-container {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            height: 500px;
-            display: flex;
-            flex-direction: column;
-        }
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            margin-bottom: 15px;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-        }
-        .message {
-            margin-bottom: 10px;
-            padding: 8px 12px;
-            border-radius: 15px;
-            max-width: 80%;
-            word-wrap: break-word;
-        }
-        .user-message {
-            background-color: #007bff;
-            color: white;
-            margin-left: auto;
-        }
-        .bot-message {
-            background-color: #e9ecef;
-            color: #333;
-        }
-        .chat-input {
-            display: flex;
-            gap: 10px;
-        }
-        #user-input {
-            flex: 1;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 20px;
-            outline: none;
-        }
-        button {
-            padding: 10px 20px;
-            background-color: #007bff;
-            color: white;
-            border: none;
-            border-radius: 20px;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        .loading {
-            display: none;
-            color: #666;
-            font-style: italic;
-        }
-    </style>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Chat - HF Inference</title>
+<style>
+  body{font-family:Arial;background:#0b0b0b;color:#fff;display:flex;flex-direction:column;align-items:center;padding:20px}
+  #chat{width:100%;max-width:700px;height:60vh;overflow:auto;border:1px solid #333;padding:12px;border-radius:8px;background:#111}
+  .msg{margin:6px 0;padding:8px 12px;border-radius:12px;max-width:75%}
+  .user{background:#b30000;color:#fff;margin-left:auto;text-align:right}
+  .bot{background:#222;color:#ddd;margin-right:auto;text-align:left}
+  #input{width:100%;max-width:700px;display:flex;gap:8px;margin-top:12px}
+  input[type="text"]{flex:1;padding:10px;border-radius:8px;border:none;background:#111;color:#fff}
+  button{padding:10px 16px;border-radius:8px;border:none;background:#d4af37;color:#000;font-weight:bold;cursor:pointer}
+  #loading{margin-top:8px;color:#ffb84d;display:none}
+</style>
 </head>
 <body>
-    <div class="chat-container">
-        <h2>🤖 Chat com DialoGPT</h2>
-        
-        <div class="chat-messages" id="chat-messages">
-            <div class="message bot-message">
-                Olá! Sou um assistente baseado em DialoGPT. Como posso ajudar você?
-            </div>
-        </div>
-        
-        <div class="chat-input">
-            <input type="text" id="user-input" placeholder="Digite sua mensagem...">
-            <button onclick="sendMessage()">Enviar</button>
-        </div>
-        
-        <div id="loading" class="loading">Gerando resposta...</div>
-    </div>
+  <h1>Chat (HuggingFace Inference)</h1>
+  <div id="chat"></div>
+  <div id="input">
+    <input id="text" type="text" placeholder="Digite sua mensagem..."/>
+    <button id="send">Enviar</button>
+  </div>
+  <div id="loading">Gerando resposta...</div>
 
-    <script>
-        // Gerar um ID único para esta sessão
-        const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
-        
-        function addMessage(text, isUser = false) {
-            const chatMessages = document.getElementById('chat-messages');
-            const messageDiv = document.createElement('div');
-            messageDiv.className = isUser ? 'message user-message' : 'message bot-message';
-            messageDiv.textContent = text;
-            chatMessages.appendChild(messageDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
+<script>
+const API = "/chat";
+const chat = document.getElementById("chat");
+const text = document.getElementById("text");
+const send = document.getElementById("send");
+const loading = document.getElementById("loading");
+const sid = "sess_" + Math.random().toString(36).substring(2,9);
 
-        async function sendMessage() {
-            const userInput = document.getElementById('user-input');
-            const message = userInput.value.trim();
-            const loading = document.getElementById('loading');
-            
-            if (!message) return;
-            
-            addMessage(message, true);
-            userInput.value = '';
-            loading.style.display = 'block';
-            
-            try {
-                const response = await fetch('/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ 
-                        message: message,
-                        session_id: sessionId
-                    })
-                });
-                
-                const data = await response.json();
-                
-                if (data.error) {
-                    addMessage('Erro: ' + data.error);
-                } else {
-                    addMessage(data.response);
-                }
-            } catch (error) {
-                addMessage('Erro de conexão com o servidor');
-            } finally {
-                loading.style.display = 'none';
-            }
-        }
+function add(msg, cls){
+  const d = document.createElement("div");
+  d.className = "msg " + cls;
+  d.textContent = msg;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+}
 
-        // Enviar mensagem ao pressionar Enter
-        document.getElementById('user-input').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                sendMessage();
-            }
-        });
-    </script>
+async function sendMsg(){
+  const m = text.value.trim();
+  if(!m) return;
+  add(m, "user");
+  text.value = "";
+  loading.style.display = "block";
+  try{
+    const r = await fetch(API, {method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({message:m, session_id:sid})});
+    const j = await r.json();
+    if(j.error) add("Erro: " + j.error, "bot"); else add(j.response, "bot");
+  }catch(e){ add("Erro de conexão", "bot"); }
+  finally{ loading.style.display = "none"; }
+}
+
+send.addEventListener("click", sendMsg);
+text.addEventListener("keypress", e => { if(e.key === "Enter") sendMsg(); });
+</script>
 </body>
 </html>
