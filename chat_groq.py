@@ -8,10 +8,12 @@ app = Flask(__name__, template_folder="templates")
 CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado
 
 # Config
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_API_KEY = "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"
+
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "groq:chat-gpt-3.5-mini")  # modelo Groq default
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
-GROQ_ENDPOINT = "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"
+GROQ_ENDPOINT = "https://api.groq.com/v1/chat/completions"
+
 
 # Histórico em memória por sessão
 session_histories = {}
