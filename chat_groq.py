@@ -9,7 +9,8 @@ CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado
 
 # Config
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "groq:chat-gpt-3.5-mini")  # modelo Groq default
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-20b")
+  # modelo Groq default
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
 GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
  # corrigido
