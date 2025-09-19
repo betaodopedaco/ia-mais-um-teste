@@ -11,7 +11,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "groq:chat-gpt-3.5-mini")  # modelo Groq default
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
-GROQ_ENDPOINT = "https://api.groq.com/v1/chat/completions"
+GROQ_ENDPOINT = "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"
 
 # Histórico em memória por sessão
 session_histories = {}
