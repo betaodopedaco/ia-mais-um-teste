@@ -8,13 +8,10 @@ app = Flask(__name__, template_folder="templates")
 CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado
 
 # Config
-GROQ_API_KEY = "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"
-
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 GROQ_MODEL = os.environ.get("GROQ_MODEL", "groq:chat-gpt-3.5-mini")  # modelo Groq default
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
-GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
-
-
+GROQ_ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"  # corrigido
 
 # Histórico em memória por sessão
 session_histories = {}
@@ -62,7 +59,6 @@ def chat():
 
     # Histórico
     history = session_histories.get(session_id, [])
-    # adiciona mensagem do usuário
     history.append({"role": "user", "content": user_message})
 
     payload = {
@@ -81,7 +77,6 @@ def chat():
         resp = requests.post(GROQ_ENDPOINT, headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         result = resp.json()
-        # pegar resposta do bot (Groq retorna choices[0].message.content)
         bot_text = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Groq error: {str(e)}"}), 500
