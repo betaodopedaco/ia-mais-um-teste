@@ -1,21 +1,19 @@
-# chat_gpt.py (versão Groq)
+# chat_groq.py
 import os
 import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
 app = Flask(__name__, template_folder="templates")
-CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado (temporário)
+CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado
 
 # Config
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "groq:chat-gpt-3.5-mini")  # modelo Groq default
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama3-70b-8192")  # modelo padrão Groq
+GROQ_ENDPOINT = "https://api.groq.com/v1/chat/completions"
 
-if not GROQ_API_KEY:
-    print("⚠️  GROQ_API_KEY não definido — defina em ENV vars no Render")
-
-# histórico em memória por sessão
+# Histórico em memória por sessão
 session_histories = {}
 
 @app.route('/')
@@ -46,7 +44,7 @@ def chat():
     if not user_message:
         return jsonify({"error": "Mensagem vazia"}), 400
 
-    # Test mode: devolve echo (útil pra validar front)
+    # Modo de teste (retorna echo)
     if TEST_MODE:
         bot_text = f"[TEST_MODE] Recebi: {user_message}"
         hist = session_histories.get(session_id, [])
@@ -57,32 +55,37 @@ def chat():
 
     # Verifica chave
     if not GROQ_API_KEY:
-        return jsonify({"error": "GROQ_API_KEY não configurada. Defina a variável no Render."}), 500
+        return jsonify({"error": "GROQ_API_KEY não configurada. Defina a variável de ambiente GROQ_API_KEY no Render."}), 500
 
-    # monta mensagens
+    # Histórico
     history = session_histories.get(session_id, [])
+    # adiciona mensagem do usuário
     history.append({"role": "user", "content": user_message})
 
-    try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": GROQ_MODEL,
-            "messages": history,
-            "max_tokens": 200,
-            "temperature": 0.7
-        }
-        resp = requests.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        bot_text = data["choices"][0]["message"]["content"].strip()
-    except Exception as e:
-        return jsonify({"error": f"Groq error: {str(e)}"}), 500
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": history,
+        "max_tokens": 150,
+        "temperature": 0.7
+    }
 
-    # atualiza histórico (mantém últimos 20)
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        resp = requests.post(GROQ_ENDPOINT, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        result = resp.json()
+        # pegar resposta do bot (Groq retorna choices[0].message.content)
+        bot_text = result.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Groq error: {str(e)}"}), 500
+    except Exception as e:
+        return jsonify({"error": f"Erro interno: {str(e)}"}), 500
+
+    # Atualiza histórico
     history.append({"role": "assistant", "content": bot_text})
     session_histories[session_id] = history[-20:]
 
