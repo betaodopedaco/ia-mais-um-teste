@@ -1,5 +1,6 @@
-# chat_gpt.py
+# chat_gpt.py (versão Groq)
 import os
+import requests
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 
@@ -7,19 +8,12 @@ app = Flask(__name__, template_folder="templates")
 CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado (temporário)
 
 # Config
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-3.5-turbo")  # pode trocar depois
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama3-70b-8192")  # modelo padrão Groq
 
-# cliente OpenAI (usa biblioteca oficial)
-if OPENAI_API_KEY:
-    try:
-        import openai
-        openai.api_key = OPENAI_API_KEY
-    except Exception as e:
-        print("Erro importando openai:", e)
-else:
-    print("OPENAI_API_KEY não definido — defina em ENV vars")
+if not GROQ_API_KEY:
+    print("⚠️  GROQ_API_KEY não definido — defina em ENV vars no Render")
 
 # histórico em memória por sessão
 session_histories = {}
@@ -38,8 +32,8 @@ def health():
 @app.route('/info')
 def info():
     return {
-        "openai_model": OPENAI_MODEL,
-        "openai_key_set": bool(OPENAI_API_KEY),
+        "groq_model": GROQ_MODEL,
+        "groq_key_set": bool(GROQ_API_KEY),
         "test_mode": TEST_MODE
     }, 200
 
@@ -56,34 +50,40 @@ def chat():
     if TEST_MODE:
         bot_text = f"[TEST_MODE] Recebi: {user_message}"
         hist = session_histories.get(session_id, [])
-        hist.append({"role":"user","content":user_message})
-        hist.append({"role":"assistant","content":bot_text})
+        hist.append({"role": "user", "content": user_message})
+        hist.append({"role": "assistant", "content": bot_text})
         session_histories[session_id] = hist[-20:]
         return jsonify({"response": bot_text})
 
     # Verifica chave
-    if not OPENAI_API_KEY:
-        return jsonify({"error":"OPENAI_API_KEY não configurada. Defina a variável OPENAI_API_KEY no Render."}), 500
+    if not GROQ_API_KEY:
+        return jsonify({"error": "GROQ_API_KEY não configurada. Defina a variável no Render."}), 500
 
-    # monta mensagens para ChatCompletion
+    # monta mensagens
     history = session_histories.get(session_id, [])
-    # append user
-    history.append({"role":"user","content":user_message})
+    history.append({"role": "user", "content": user_message})
 
     try:
-        import openai
-        resp = openai.ChatCompletion.create(
-            model=OPENAI_MODEL,
-            messages=history,
-            max_tokens=150,
-            temperature=0.7
-        )
-        bot_text = resp["choices"][0]["message"]["content"].strip()
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": GROQ_MODEL,
+            "messages": history,
+            "max_tokens": 200,
+            "temperature": 0.7
+        }
+        resp = requests.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        bot_text = data["choices"][0]["message"]["content"].strip()
     except Exception as e:
-        return jsonify({"error": f"OpenAI error: {str(e)}"}), 500
+        return jsonify({"error": f"Groq error: {str(e)}"}), 500
 
     # atualiza histórico (mantém últimos 20)
-    history.append({"role":"assistant","content":bot_text})
+    history.append({"role": "assistant", "content": bot_text})
     session_histories[session_id] = history[-20:]
 
     return jsonify({"response": bot_text})
