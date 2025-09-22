@@ -9,7 +9,7 @@ app = Flask(__name__, template_folder="templates")
 CORS(app, resources={r"/*": {"origins": "*"}})  # permite front separado
 
 # === Config via ENV ===
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+DEEPSEEK_API_KEY = os.environ.get("sk-00a7ca8530bb4e2e89c630e8f70cdcd0")
 DEEPSEEK_MODEL = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 TEST_MODE = os.environ.get("TEST_MODE", "false").lower() in ("1", "true", "yes")
 DEEPSEEK_ENDPOINT = os.environ.get("DEEPSEEK_ENDPOINT", "https://api.deepseek.com/v1/chat/completions")
